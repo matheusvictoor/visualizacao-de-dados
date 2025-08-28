@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Volume de chuva acumulada por ano (2015 a 2024) - Fazenda Carnaúba - Taperoá - PB</title>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+    <style>
+        body {
+            margin: 20px;
+            padding: 0;
+            font-family: Arial, sans-serif;
+            text-align: center;
+        }
+
+        #main {
+            width: 100%;
+            height: 600px;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+
+<body>
+    <h2>Volume de chuva acumulada por ano (2015 a 2024) - Fazenda Carnaúba - Taperoá - PB</h2>
+
+    <div id="main"></div>
+
+    <script>
+        async function initChart() {
+            const rawData = [
+                { ano: 2013, total: 280 },
+                { ano: 2014, total: 404.6 },
+                { ano: 2015, total: 386.7 },
+                { ano: 2016, total: 295 },
+                { ano: 2017, total: 211.5 },
+                { ano: 2018, total: 764.8 },
+                { ano: 2019, total: 497.9 },
+                { ano: 2020, total: 591.3 },
+                { ano: 2021, total: 388.5 },
+                { ano: 2022, total: 938.6 },
+                { ano: 2023, total: 465.6 },
+                { ano: 2024, total: 378.2 },
+                { ano: 2025, total: 489.1 }
+            ];
+
+            const data = rawData.filter(d => d.ano >= 2015 && d.ano <= 2024);
+
+            const chart = echarts.init(document.getElementById('main'));
+
+            const option = {
+                tooltip: {
+                    trigger: 'axis',
+                    formatter: function (params) {
+                        return params[0].axisValue + ': ' + params[0].data + ' mm';
+                    }
+                },
+                xAxis: {
+                    type: 'category',
+                    data: data.map(d => d.ano),
+                    name: 'Ano'
+                },
+                yAxis: {
+                    type: 'value',
+                    name: 'Total de chuva (mm)'
+                },
+                dataZoom: [
+                    { type: 'inside' },
+                    { type: 'slider' }
+                ],
+                series: [{
+                    data: data.map(d => d.total),
+                    type: 'bar',
+                    itemStyle: { color: '#4a90e2' }
+                }]
+            };
+
+            chart.setOption(option);
+        }
+
+        initChart();
+    </script>
+</body>
+
+</html>
