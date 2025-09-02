@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Lab7 - Visualização Interativa</title>
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #f9f9f9;
+    }
+    h2 {
+      text-align: center;
+      margin: 15px 0;
+    }
+    #controls {
+      width: 90%;
+      margin: 10px auto;
+      text-align: center;
+    }
+    #controls select {
+      padding: 8px;
+      font-size: 16px;
+      border-radius: 5px;
+      border: 1px solid #ccc;
+    }
+    #container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    #map {
+      width: 90%;
+      height: 500px;
+      margin-bottom: 20px;
+    }
+    #line {
+      width: 90%;
+      height: 400px;
+    }
+  </style>
+</head>
+<body>
+
+  <h2>Balança Comercial do Brasil (1997–2025)</h2>
+
+  <div id="controls">
+    <label for="tipoSelect">Mostrar no mapa: </label>
+    <select id="tipoSelect">
+      <option value="BAL">Balança Comercial (BAL)</option>
+      <option value="EXP">Exportações (EXP)</option>
+      <option value="IMP">Importações (IMP)</option>
+    </select>
+  </div>
+
+  <div id="container">
+    <div id="map"></div>
+    <div id="line"></div>
+  </div>
+
+  <script>
+    function formatNumero(valor) {
+      const abs = Math.abs(valor);
+
+      if (abs >= 1e9) {
+        return (valor / 1e9).toFixed(2).replace(/\.00$/, '') + ' bi';
+      } else if (abs >= 1e6) {
+        return (valor / 1e6).toFixed(2).replace(/\.00$/, '') + ' mi';
+      } else if (abs >= 1e3) {
+        return (valor / 1e3).toFixed(1).replace(/\.0$/, '') + ' mil';
+      } else {
+        return valor.toFixed(0);
+      }
+    }
+
+    Promise.all([
+      fetch('comex.json').then(res => {
+        if (!res.ok) throw new Error(`Erro ao carregar comex.json: ${res.status}`);
+        return res.json();
+      }),
+      fetch('https://cdn.jsdelivr.net/npm/echarts/map/json/world.json').then(res => {
+        if (!res.ok) throw new Error(`Erro ao carregar world.json: ${res.status}`);
+        return res.json();
+      })
+    ])
+    .then(([data, worldJson]) => {
+      echarts.registerMap('world', worldJson);
+
+      const anos = Object.keys(data["BAL"]);
+      const paises = [...new Set(
+        anos.flatMap(ano =>
+          Object.keys(data).flatMap(tipo =>
+            data[tipo][ano].map(d => d.name)
+          )
+        )
+      )];
+
+      const seriesPorPais = {};
+      paises.forEach(pais => {
+        seriesPorPais[pais] = { EXP: [], IMP: [], BAL: [] };
+        anos.forEach(ano => {
+          ['EXP', 'IMP', 'BAL'].forEach(tipo => {
+            const entry = data[tipo][ano].find(d => d.name === pais);
+            seriesPorPais[pais][tipo].push(entry ? entry.us_value : 0);
+          });
+        });
+      });
+
+      const mapChart = echarts.init(document.getElementById('map'));
+      const lineChart = echarts.init(document.getElementById('line'));
+      const tipoSelect = document.getElementById('tipoSelect');
+      let tipoAtual = tipoSelect.value;
+
+      function atualizarMapa() {
+        const dadosAnoAtual = data[tipoAtual][anos[0]].map(d => ({
+          name: d.name,
+          value: d.us_value
+        }));
+
+        const minValue = Math.min(...dadosAnoAtual.map(d => d.value));
+        const maxValue = Math.max(...dadosAnoAtual.map(d => d.value));
+        const range = Math.max(Math.abs(minValue), Math.abs(maxValue));
+        const limit = Math.ceil(range / 1e6) * 1e6;
+
+        const mapOption = {
+          tooltip: {
+            trigger: 'item',
+            formatter: p => {
+              const valor = p.value ?? 0;
+              const valorFormatado = formatNumero(valor);
+              return `${p.name}<br/>${tipoAtual}: ${valorFormatado} USD`;
+            }
+          },
+          title: {
+            left: 'center',
+            bottom: '10px',
+            textStyle: { fontSize: 14, color: '#555' }
+          },
+          visualMap: {
+            min: -limit,
+            max: limit,
+            right: '3%',
+            top: 'center',
+            orient: 'vertical',
+            dimension: 0,
+            calculable: true,
+            realtime: true,
+            text: ['Superávit', 'Déficit'],
+            textGap: 40,
+            inRange: {
+              color: ['#ca0020', '#f4a582', '#f7f7f7', '#92c5de', '#0571b0']
+            },
+            itemWidth: 30,
+            itemHeight: window.innerWidth < 768 ? 150 : 200,
+            formatter: value => formatNumero(value) + ' USD',
+            textStyle: {
+              fontSize: 14,
+              color: '#333',
+              fontWeight: 'bold'
+            },
+            padding: 20,
+            borderColor: '#ccc',
+            borderWidth: 1,
+            borderRadius: 8
+          },
+          series: [{
+            type: 'map',
+            map: 'world',
+            roam: true,
+            emphasis: { label: { show: true, fontWeight: 'bold' } },
+            data: dadosAnoAtual
+          }]
+        };
+
+        mapChart.setOption(mapOption, true);
+      }
+
+      function atualizarGraficoLinhas(pais) {
+        if (!seriesPorPais[pais]) return;
+
+        const valoresEXP = seriesPorPais[pais]['EXP'].map(v => v / 1e6);
+        const valoresIMP = seriesPorPais[pais]['IMP'].map(v => v / 1e6);
+        const valoresBAL = seriesPorPais[pais]['BAL'].map(v => v / 1e6);
+
+        lineChart.setOption({
+          title: { text: `Comércio com ${pais} (USD)`, left: 'center' },
+          tooltip: {
+            trigger: 'axis',
+            formatter: function (params) {
+              let tooltip = params[0].name + '<br/>';
+              params.forEach(p => {
+                const valorReal = p.value * 1e6;
+                const valorFormatado = formatNumero(valorReal);
+                tooltip += `${p.marker}${p.seriesName}: ${valorFormatado} USD<br/>`;
+              });
+              return tooltip;
+            }
+          },
+          legend: {
+            data: ['Exportações (EXP)', 'Importações (IMP)', 'Balança (BAL)'],
+            bottom: '10px'
+          },
+          xAxis: { type: 'category', data: anos },
+          yAxis: {
+            type: 'value',
+            name: 'Valor (USD)',
+            axisLabel: {
+              formatter: function (value) {
+                return formatNumero(value * 1e6);
+              }
+            }
+          },
+          series: [
+            {
+              name: 'Exportações (EXP)',
+              type: 'line',
+              smooth: true,
+              data: valoresEXP,
+              color: '#0571b0'
+            },
+            {
+              name: 'Importações (IMP)',
+              type: 'line',
+              smooth: true,
+              data: valoresIMP,
+              color: '#ca0020'
+            },
+            {
+              name: 'Balança (BAL)',
+              type: 'line',
+              smooth: true,
+              data: valoresBAL,
+              color: '#7b3294'
+            }
+          ]
+        });
+      }
+
+      atualizarMapa();
+
+      lineChart.setOption({
+        title: { text: 'Selecione um país no mapa', left: 'center' },
+        xAxis: { type: 'category', data: anos },
+        yAxis: { type: 'value', name: 'USD' },
+        series: []
+      });
+
+      tipoSelect.addEventListener('change', () => {
+        tipoAtual = tipoSelect.value;
+        atualizarMapa();
+      });
+
+      mapChart.on('click', function (params) {
+        atualizarGraficoLinhas(params.name);
+      });
+
+    })
+    .catch(err => {
+      console.error("Erro ao carregar dados:", err);
+    });
+  </script>
+</body>
+</html>
